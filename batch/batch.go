@@ -181,9 +181,8 @@ type Processor interface {
 	//    func (p *processor) Process(ctx context.Context, ps *batch.PipelineStage) {
 	//      defer ps.Close()
 	//      for item := range ps.Input() {
-	//        value, _ := item.Get().(int64)
-	//        item.Set(value*value)
-	//        ps.Output() <- item
+	//        value := item.Get().(int)
+	//        ps.Output <- ps.NewItem(value*value)
 	//      }
 	//    }
 	//
@@ -240,7 +239,7 @@ func (b *Batch) Go(ctx context.Context, s Source, p Processor) <-chan error {
 
 	go b.doIDGenerator()
 	go b.doReader(ctx)
-	go b.doProcessors(ctx)
+	go b.doProcessor(ctx)
 
 	return b.errs
 }
@@ -316,8 +315,8 @@ func (b *Batch) doReader(ctx context.Context) {
 	close(b.items)
 }
 
-// doProcessors starts the processor goroutine.
-func (b *Batch) doProcessors(ctx context.Context) {
+// doProcessor starts the processor goroutine.
+func (b *Batch) doProcessor(ctx context.Context) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
