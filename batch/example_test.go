@@ -82,3 +82,71 @@ func Example() {
 	// Finished processing.
 	// Found error: cannot process 5
 }
+
+// sumProcessor is a Processor that sums items in batches.
+type sumProcessor struct{}
+
+// Process prints a batch of items.
+func (p *sumProcessor) Process(ctx context.Context, ps *batch.PipelineStage) {
+	defer ps.Close()
+
+	out := 0
+	for item := range ps.Input {
+		out += item.Get().(int)
+	}
+	ps.Output <- ps.NewItem(out)
+}
+
+func Example_sum() {
+	// Create a batch processor that processes items 5 at a time
+	config := batch.NewConstantConfig(&batch.ConfigValues{
+		MinItems: 5,
+	})
+	b := batch.New(config)
+	p := &sumProcessor{}
+
+	// Channel is a Source that reads from a channel until it's closed
+	ch := make(chan interface{})
+	s := source.Channel{
+		Input: ch,
+	}
+
+	// Go runs in the background while the main goroutine processes errors
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errs := b.Go(ctx, &s, p)
+
+	// Spawn a goroutine that simulates loading data from somewhere
+	go func() {
+		for i := 0; i <= 10; i++ {
+			time.Sleep(time.Millisecond * 10)
+			ch <- i
+		}
+		close(ch)
+	}()
+
+	// Spawn goroutine to process the output
+	go func() {
+		for item := range b.Out() {
+			fmt.Println("Sum:", item.Get())
+		}
+	}()
+
+	// Wait for errors. When the error channel is closed the pipeline has been
+	// completely drained. Alternatively, we could wait for Done.
+	var lastErr error
+	for err := range errs {
+		lastErr = err
+	}
+
+	fmt.Println("Finished processing.")
+	if lastErr != nil {
+		fmt.Println("Found error:", lastErr.Error())
+	}
+	// Output:
+	// Sum: 10
+	// Sum: 35
+	// Sum: 10
+	// Finished processing.
+}
